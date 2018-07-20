@@ -5,6 +5,16 @@ GO
 CREATE PROCEDURE database_shadow.create_shadow
 	(
 		@pdatabase_name AS sysname
+	  , @pinclude_tables AS bit = 1
+	  , @pinclude_table_views AS bit = 1
+	  , @pinclude_procedures AS bit = 1
+	  , @pinclude_views AS bit = 1
+	  , @pinclude_scalar_functions AS bit = 1
+	  , @pinclude_table_valued_functions AS bit = 1
+	  , @pinclude_inline_table_valued_functions AS bit = 1
+	  , @pinclude_assembly_scalar_functions AS bit = 1
+	  , @pinclude_assembly_table_valued_functions AS bit = 1
+	  , @pinclude_sql_dml_trigger AS bit = 1
 	  , @pdebug AS bit = 0
 	)
 AS
@@ -25,9 +35,21 @@ AS
                                                                                                                                                                                                                                                                                                  
     Execution Sample:			EXEC database_shadow.create_shadow
 									@pdatabase_name = 'ods_frank'
-								,   @pdebug = 1
+								  , @pinclude_tables = 1
+								  , @pinclude_table_views = 1
+								  , @pinclude_procedures = 1
+								  , @pinclude_views = 1
+								  , @pinclude_scalar_functions = 1
+								  , @pinclude_table_valued_functions = 1
+								  , @pinclude_inline_table_valued_functions = 1
+								  , @pinclude_assembly_scalar_functions = 1
+								  , @pinclude_assembly_table_valued_functions = 1
+								  , @pinclude_sql_dml_trigger = 1
+								  , @pdebug = 1
+
 
 */
+
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -36,9 +58,38 @@ SET XACT_ABORT ON;
 		BEGIN TRY
 			BEGIN TRAN create_shadow;
 
-			DECLARE @sqlcmd AS nvarchar(MAX);
-			DECLARE @sqlcmd_drop AS nvarchar(MAX);
-			DECLARE @sqlcmd_create AS nvarchar(MAX);
+			DECLARE
+				@sqlcmd AS nvarchar(MAX)
+			  , @sqlcmd_drop AS nvarchar(MAX)
+			  , @sqlcmd_create AS nvarchar(MAX)
+			  , @object_filter AS nvarchar(200) = '';
+
+			IF @pinclude_procedures = 1
+				SET @object_filter = @object_filter + '''P'', ';
+
+			IF @pinclude_views = 1
+				SET @object_filter = @object_filter + '''V'', ';
+
+			IF @pinclude_scalar_functions = 1
+				SET @object_filter = @object_filter + '''FN'', ';
+
+			IF @pinclude_table_valued_functions = 1
+				SET @object_filter = @object_filter + '''TF'', ';
+
+			IF @pinclude_inline_table_valued_functions = 1
+				SET @object_filter = @object_filter + '''IF'', ';
+
+			IF @pinclude_assembly_scalar_functions = 1
+				SET @object_filter = @object_filter + '''FS'', ';
+
+			IF @pinclude_assembly_table_valued_functions = 1
+				SET @object_filter = @object_filter + '''FT'', ';
+
+			IF @pinclude_sql_dml_trigger = 1
+				SET @object_filter = @object_filter + '''TR'', ';
+
+			-- FGE: Delete last Comma
+			SET @object_filter = LEFT(@object_filter,LEN(@object_filter)-1);
 
 			---------------------------------------------------------------------------------------------
 			-- FGE: Check if there is a schema present that has the name of the database
@@ -114,7 +165,7 @@ SET XACT_ABORT ON;
 						   FROM [' + @pdatabase_name + '].sys.objects AS o
 						   JOIN [' + @pdatabase_name
 						  + '].sys.schemas AS s
-                           ON o.schema_id = s.schema_id WHERE o.type in (''FN'', ''TF'', ''P'',''IF'',''FS'',''FT'', ''TR'', ''V'')';
+                           ON o.schema_id = s.schema_id WHERE o.type in ('+@object_filter+')';
 
 			INSERT INTO @objects
 			EXEC (@sqlcmd);
@@ -123,105 +174,114 @@ SET XACT_ABORT ON;
 			------------------------------------------------------------------------------------------------
 			-- FGE: Create synonyms for tables
 			------------------------------------------------------------------------------------------------
-			DECLARE create_synonyms CURSOR FOR
-			SELECT
-				 'IF OBJECT_ID(''[' + @pdatabase_name + '].' + full_name_synonym
-				 + ''',''SN'') IS NOT NULL 
-	                 DROP SYNONYM ' + '[' + @pdatabase_name + '].' + full_name_synonym + ' CREATE SYNONYM ' + '['
-				 + @pdatabase_name + '].' + full_name_synonym + ' 
-					 FOR [' + @pdatabase_name + '].' + full_name + ';' AS sqlcmd
-			FROM @tables;
-
-			OPEN create_synonyms;
-			FETCH NEXT FROM create_synonyms
-			INTO
-				@sqlcmd;
-
-			WHILE @@fetch_status = 0
+			IF @pinclude_tables = 1
 				BEGIN
 
-					IF @pdebug = 0
-						EXEC (@sqlcmd);
-					ELSE
-						PRINT @sqlcmd;
+					DECLARE create_synonyms CURSOR FOR
+					SELECT
+						 'IF OBJECT_ID(''[' + @pdatabase_name + '].' + full_name_synonym
+						 + ''',''SN'') IS NOT NULL 
+	                 DROP SYNONYM ' + '[' + @pdatabase_name + '].' + full_name_synonym + ' CREATE SYNONYM ' + '['
+						 + @pdatabase_name + '].' + full_name_synonym + ' 
+					 FOR [' + @pdatabase_name + '].' + full_name + ';' AS sqlcmd
+					FROM @tables;
+
+					OPEN create_synonyms;
 					FETCH NEXT FROM create_synonyms
 					INTO
 						@sqlcmd;
-				END;
 
-			CLOSE create_synonyms;
-			DEALLOCATE create_synonyms;
+					WHILE @@fetch_status = 0
+						BEGIN
+
+							IF @pdebug = 0
+								EXEC (@sqlcmd);
+							ELSE
+								PRINT @sqlcmd;
+							FETCH NEXT FROM create_synonyms
+							INTO
+								@sqlcmd;
+						END;
+
+					CLOSE create_synonyms;
+					DEALLOCATE create_synonyms;
+				END;
 
 			------------------------------------------------------------------------------------------------
 			-- FGE: Create a view for table synonyms that can be used in tSQLt for FakeTable
 			------------------------------------------------------------------------------------------------
-			DECLARE create_views CURSOR FOR WITH table_columns
-											AS (
-											   SELECT
-													c.full_name AS column_name
-												  , c.object_id
-												  , c.column_id
-											   FROM @columns AS c
-											   JOIN @tables AS t
-											   ON c.object_id = t.object_id)
-											   , columlist
-											AS (SELECT		DISTINCT
-															t.object_id
-														  , cols.cols
-												FROM		@tables AS t
-												CROSS APPLY (
-																SELECT
-																		 object_id
-																	   , cols = STUFF((
-																						  SELECT
-																								',' + column_name
-																						  FROM	table_columns
-																						  WHERE object_id = t.object_id
-																						  FOR XML PATH('')
-																					  )
-																					, 1
-																					, 1
-																					, ''
-																					 )
-																FROM	 table_columns AS tc
-																GROUP BY tc.object_id
-															) AS cols )
-			SELECT
-				 'IF OBJECT_ID(''[' + @pdatabase_name + '].' + t.full_name_view
-				 + ''',''V'') IS NOT NULL 
-                  DROP VIEW [' + @pdatabase_name + '].' + t.full_name_view + ';' AS sqlcmd_drop
-			   , 'CREATE VIEW [' + @pdatabase_name + '].' + t.full_name_view + '
-                  AS SELECT ' + cl.cols + ' FROM [' + @pdatabase_name + '].' + t.full_name_synonym AS sqlcmd_create
-			FROM @tables AS t
-			JOIN columlist AS cl
-			ON t.object_id = cl.object_id;
-
-			OPEN create_views;
-
-			FETCH NEXT FROM create_views
-			INTO
-				@sqlcmd_drop
-			  , @sqlcmd_create;
-
-			WHILE @@fetch_status = 0
+			IF @pinclude_tables = 1
+			   AND @pinclude_table_views = 1
 				BEGIN
-					IF @pdebug = 0
-						EXEC (@sqlcmd_drop);
-					ELSE
-						PRINT @sqlcmd_drop;
-					IF @pdebug = 0
-						EXEC (@sqlcmd_create);
-					ELSE
-						PRINT @sqlcmd_create;
+					DECLARE create_views CURSOR FOR WITH table_columns
+													AS (
+													   SELECT
+															c.full_name AS column_name
+														  , c.object_id
+														  , c.column_id
+													   FROM @columns AS c
+													   JOIN @tables AS t
+													   ON c.object_id = t.object_id)
+													   , columlist
+													AS (SELECT		DISTINCT
+																	t.object_id
+																  , cols.cols
+														FROM		@tables AS t
+														CROSS APPLY (
+																		SELECT
+																				 object_id
+																			   , cols = STUFF(
+																						(
+																							SELECT
+																								  ',' + column_name
+																							FROM  table_columns
+																							WHERE object_id = t.object_id
+																							FOR XML PATH('')
+																						)
+																					  , 1
+																					  , 1
+																					  , ''
+																							 )
+																		FROM	 table_columns AS tc
+																		GROUP BY tc.object_id
+																	) AS cols )
+					SELECT
+						 'IF OBJECT_ID(''[' + @pdatabase_name + '].' + t.full_name_view
+						 + ''',''V'') IS NOT NULL 
+                  DROP VIEW [' + @pdatabase_name + '].' + t.full_name_view + ';' AS sqlcmd_drop
+					   , 'CREATE VIEW [' + @pdatabase_name + '].' + t.full_name_view + '
+                  AS SELECT ' + cl.cols + ' FROM [' + @pdatabase_name + '].' + t.full_name_synonym AS sqlcmd_create
+					FROM @tables AS t
+					JOIN columlist AS cl
+					ON t.object_id = cl.object_id;
+
+					OPEN create_views;
 
 					FETCH NEXT FROM create_views
 					INTO
 						@sqlcmd_drop
 					  , @sqlcmd_create;
-				END;
 
-			CLOSE create_views;
-			DEALLOCATE create_views;
+					WHILE @@fetch_status = 0
+						BEGIN
+							IF @pdebug = 0
+								EXEC (@sqlcmd_drop);
+							ELSE
+								PRINT @sqlcmd_drop;
+							IF @pdebug = 0
+								EXEC (@sqlcmd_create);
+							ELSE
+								PRINT @sqlcmd_create;
+
+							FETCH NEXT FROM create_views
+							INTO
+								@sqlcmd_drop
+							  , @sqlcmd_create;
+						END;
+
+					CLOSE create_views;
+					DEALLOCATE create_views;
+				END;
 
 			------------------------------------------------------------------------------------------------
 			-- FGE: Create synonyms for all other objects in source database
@@ -251,8 +311,8 @@ SET XACT_ABORT ON;
 				END;
 			CLOSE create_synonyms;
 			DEALLOCATE create_synonyms;
-
-			COMMIT TRAN create_shadow;
+		
+			COMMIT TRAN create_shadow; 
 			RETURN;
 
 		END TRY
