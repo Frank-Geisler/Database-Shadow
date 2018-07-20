@@ -1,10 +1,10 @@
-IF OBJECT_ID('database_shadow.create_shadow','P') IS NOT NULL 
-   DROP PROCEDURE database_shadow.create_shadow;
+IF OBJECT_ID('database_shadow.create_shadow', 'P') IS NOT NULL
+	DROP PROCEDURE database_shadow.create_shadow;
 GO
 
 CREATE PROCEDURE database_shadow.create_shadow
 	(
-		@pdatabase_name AS sysname = 'ods_frank'
+		@pdatabase_name AS sysname
 	  , @pdebug AS bit = 0
 	)
 AS
@@ -23,7 +23,9 @@ AS
 
     Dependent Objects:			*****
                                                                                                                                                                                                                                                                                                  
-    Execution Sample:			EXEC database_shadow.create_shadow  ...
+    Execution Sample:			EXEC database_shadow.create_shadow
+									@pdatabase_name = 'ods_frank'
+								,   @pdebug = 1
 
 */
 

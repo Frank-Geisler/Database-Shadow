@@ -41,9 +41,7 @@ SET XACT_ABORT ON;
 			  , @msg varchar(500)
 			  , @ID int;
 
-			IF OBJECT_ID('tempdb..#dropsqlcmds') IS NOT NULL
-				DROP TABLE #dropsqlcmds;
-			CREATE TABLE #dropsqlcmds
+			DECLARE @dropsqlcmds table
 				(
 					ID int IDENTITY(1, 1)
 				  , SQLstatement varchar(1000)
@@ -62,7 +60,7 @@ SET XACT_ABORT ON;
 			IF @pdebug = 1
 				PRINT (@sqlcmd);
 
-			INSERT INTO #dropsqlcmds
+			INSERT INTO @dropsqlcmds
 			EXEC (@sqlcmd);
 
 			-- drop all default constraints, check constraints and Foreign Keys
@@ -76,7 +74,7 @@ SET XACT_ABORT ON;
 
 			IF @pdebug = 1
 				PRINT (@sqlcmd);
-			INSERT INTO #dropsqlcmds
+			INSERT INTO @dropsqlcmds
 			EXEC (@sqlcmd);
 
 			-- drop all other objects in order    
@@ -105,13 +103,13 @@ SET XACT_ABORT ON;
 
 			IF @pdebug = 1
 				PRINT (@sqlcmd);
-			INSERT INTO #dropsqlcmds
+			INSERT INTO @dropsqlcmds
 			EXEC (@sqlcmd);
 
 			DECLARE statement_cursor CURSOR FOR
 			SELECT
 					 SQLstatement
-			FROM	 #dropsqlcmds
+			FROM	 @dropsqlcmds
 			ORDER BY ID ASC;
 
 			OPEN statement_cursor;
@@ -125,7 +123,6 @@ SET XACT_ABORT ON;
 						PRINT (@sqlcmd);
 					ELSE
 						BEGIN
-							PRINT (@sqlcmd);
 							EXEC (@sqlcmd);
 						END;
 
@@ -141,7 +138,6 @@ SET XACT_ABORT ON;
 				PRINT ('DROP SCHEMA ' + @pdatabase_name);
 			ELSE
 				BEGIN
-					PRINT ('DROP SCHEMA ' + @pdatabase_name);
 					EXEC ('DROP SCHEMA ' + @pdatabase_name);
 				END;
 
